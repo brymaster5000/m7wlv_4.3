@@ -1,13 +1,6 @@
 ui_print("");
 ui_print("");
-ui_print("  __    __    __             ");
-ui_print(" /  \  |  \  /  \            ");
-ui_print("| || | |  / | || |       __  ");
-ui_print("| || | |  \ | || | |\ | |__  ");
-ui_print(" \__/  |__/  \__/  | \| |__  ");
-ui_print("");
-ui_print("");
-ui_print("OBOne KernOB 4.3");
+ui_print("Lunar kernel 4.3");
 ui_print("");
 ui_print("");
 ui_print("mounting system");
@@ -34,4 +27,3 @@ run_program("/sbin/busybox", "dd", "if=/tmp/newboot.img", "of=/dev/block/mmcblk0
 ui_print("Done");
 ui_print("");
 ui_print("");
-ui_print("MAY THE FORCE BE WITH YOU!");
