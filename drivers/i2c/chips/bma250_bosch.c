@@ -1816,7 +1816,9 @@ static void pick_wake_detection_non_interrupt(struct bma250_data *bma250, s16 da
         if (WAS_LAYING) {
                 if (MOVED == 0 && is_laying(data_x, data_y, data_z)) {
                         LAST_LAYING_T = LAYING_T;
+#ifdef CONFIG_BMA250_WAKE_OPTIONS
                         //printk("BMA PICK - WAS_LAYING = 1, MOVED 0, STILL LAYING\n");
+#endif
                 } else {
                         if (MOVED == 0) {
                         //        printk("BMA PICK - WAS_LAYING = 1, MOVED -> 1, MOVE_STARTED\n");
@@ -2419,7 +2421,9 @@ if ( ( enable == 0 ) && ( keep_sensor_on() == 1 || (FLICK_SLEEP_ENABLED == 1 && 
 		if (pre_enable == 0) {
 			bma250_set_mode(bma250->bma250_client,
 					BMA250_MODE_NORMAL);
+#ifdef CONFIG_BMA250_WAKE_OPTIONS
 			printk("BMA schedule delayed work - enable\n");
+#endif
 			queue_delayed_work(bma250->bma250_wq, &polling_work,
 				msecs_to_jiffies(atomic_read(&bma250->delay)));
 			atomic_set(&bma250->enable, 1);
@@ -2435,7 +2439,9 @@ if ( ( enable == 0 ) && ( keep_sensor_on() == 1 || (FLICK_SLEEP_ENABLED == 1 && 
 #endif
 			bma250_set_mode(bma250->bma250_client,
 					BMA250_MODE_SUSPEND);
+#ifdef CONFIG_BMA250_WAKE_OPTIONS
 			//printk("BMA cancel delayed work - enable\n");
+#endif
 			cancel_delayed_work_sync(&polling_work);
 			atomic_set(&bma250->enable, 0);
 		}
@@ -2446,7 +2452,9 @@ if ( ( enable == 0 ) && ( keep_sensor_on() == 1 || (FLICK_SLEEP_ENABLED == 1 && 
 
 		if (bma250->pdata->power_LPM)
 #endif
+#ifdef CONFIG_BMA250_WAKE_OPTIONS
 		if (keep_sensor_on() ==0)
+#endif
 			bma250->pdata->power_LPM(1);
 	}
 
@@ -3446,6 +3454,7 @@ static ssize_t bma250_eeprom_writing_store(struct device *dev,
 }
 
 #ifdef CONFIG_CIR_ALWAYS_READY
+#ifdef CONFIG_BMA250_WAKE_OPTIONS
 ssize_t bma250_setup_interrupt_for_wake(struct bma250_data *bma250) {
   int error;
       cir_flag = 1;
@@ -3482,6 +3491,7 @@ ssize_t bma250_setup_interrupt_for_wake(struct bma250_data *bma250) {
 
   return error;
 }
+#endif
 
 static ssize_t bma250_enable_interrupt(struct device *dev,
 		struct device_attribute *attr,
@@ -3502,10 +3512,41 @@ static ssize_t bma250_enable_interrupt(struct device *dev,
 #endif
 	I("bma250_enable_interrupt, power_key_pressed = %d\n", power_key_pressed);
 	if(enable == 1 && !power_key_pressed){ 
+#ifdef CONFIG_BMA250_WAKE_OPTIONS
 	    error += bma250_setup_interrupt_for_wake(bma250);
+#else
+
+	    cir_flag = 1;
+
+	    
+	    if(bma250->pdata->power_LPM)
+		bma250->pdata->power_LPM(0);
+	    
+	    error = bma250_set_Int_Mode(bma250->bma250_client, 1);
+
+	    error += bma250_set_slope_duration(bma250->bma250_client, 0x01);
+	    error += bma250_set_slope_threshold(bma250->bma250_client, 0x07);
+
+	    
+	    error += bma250_set_Int_Enable(bma250->bma250_client, 5, 1);
+	    error += bma250_set_Int_Enable(bma250->bma250_client, 6, 1);
+	    error += bma250_set_Int_Enable(bma250->bma250_client, 7, 0);
+	    error += bma250_set_int1_pad_sel(bma250->bma250_client, PAD_SLOP);
+
+	    error += bma250_set_mode(bma250->bma250_client, BMA250_MODE_NORMAL);
+
+#endif
+#ifdef CONFIG_BMA250_WAKE_OPTIONS
 	    if (error)
 		return error;
+#else
+	    if (error)
+		return error;
+	    I("Always Ready enable = 1 \n");
+#endif
+
 	}  else if(enable == 0){
+
 
 	    error += bma250_set_Int_Enable(bma250->bma250_client, 5, 0);
 	    error += bma250_set_Int_Enable(bma250->bma250_client, 6, 0);
@@ -3722,6 +3763,7 @@ static void bma250_irq_work_func(struct work_struct *work)
 	wake_lock_timeout(&(bma250->cir_always_ready_wake_lock), 1*HZ);
 	bma250_get_interruptstatus1(bma250->bma250_client, &status);
 	I("bma250_irq_work_func, status = 0x%x\n", status);
+#ifdef CONFIG_BMA250_WAKE_OPTIONS
 #if 0
 	input_report_rel(bma250->input_cir,
 		SLOP_INTERRUPT,
@@ -3737,6 +3779,22 @@ static void bma250_irq_work_func(struct work_struct *work)
 		SLOPE_INTERRUPT_Y_HAPPENED);
 	input_sync(bma250->input_cir);
 #endif
+#else
+	input_report_rel(bma250->input_cir,
+		SLOP_INTERRUPT,
+		SLOPE_INTERRUPT_X_NEGATIVE_HAPPENED);
+	input_report_rel(bma250->input_cir,
+		SLOP_INTERRUPT,
+		SLOPE_INTERRUPT_Y_NEGATIVE_HAPPENED);
+	input_report_rel(bma250->input_cir,
+		SLOP_INTERRUPT,
+		SLOPE_INTERRUPT_X_HAPPENED);
+	input_report_rel(bma250->input_cir,
+		SLOP_INTERRUPT,
+		SLOPE_INTERRUPT_Y_HAPPENED);
+	input_sync(bma250->input_cir);
+#endif
+
 	enable_irq(bma250->IRQ);
 
 }
@@ -4037,7 +4095,9 @@ static void bma250_early_suspend(struct early_suspend *h)
 	if (atomic_read(&data->enable) == 1) {
 	    I("suspend mode\n");
 	    bma250_set_mode(data->bma250_client, BMA250_MODE_SUSPEND);
+#ifdef CONFIG_BMA250_WAKE_OPTIONS
 	    printk("BMA cancel delayed work - early suspend\n");
+#endif
 	    cancel_delayed_work_sync(&polling_work);
 	}
 	mutex_unlock(&data->enable_mutex);
@@ -4098,7 +4158,9 @@ static int bma250_suspend(struct i2c_client *client, pm_message_t mesg)
 	if (atomic_read(&data->enable) == 1) {
 	    I("suspend mode\n");
 		bma250_set_mode(data->bma250_client, BMA250_MODE_SUSPEND);
+#ifdef CONFIG_BMA250_WAKE_OPTIONS
 		printk("BMA cancel delayed work - suspend\n");
+#endif
 		cancel_delayed_work_sync(&polling_work);
 	}
 	mutex_unlock(&data->enable_mutex);
@@ -4110,12 +4172,16 @@ static int bma250_suspend(struct i2c_client *client, pm_message_t mesg)
 
 	if (data && (data->pdata->power_LPM)){
 #endif
+#ifdef CONFIG_BMA250_WAKE_OPTIONS
 	if (keep_sensor_on() == 0)
     	{
+#endif
 	    I("suspend + power_LPM\n");
 		data->pdata->power_LPM(1);
 	}
+#ifdef CONFIG_BMA250_WAKE_OPTIONS
 	}
+#endif
 
 	return 0;
 }
@@ -4134,7 +4200,9 @@ static int bma250_resume(struct i2c_client *client)
 	if (atomic_read(&data->enable) == 1) {
 
 		bma250_set_mode(data->bma250_client, BMA250_MODE_NORMAL);
+#ifdef CONFIG_BMA250_WAKE_OPTIONS
 		printk("BMA schedule delayed work - resume\n");
+#endif
 		queue_delayed_work(data->bma250_wq, &polling_work,
 				msecs_to_jiffies(atomic_read(&data->delay)));
 	}
